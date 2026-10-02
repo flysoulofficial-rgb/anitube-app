@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">AniTube</string>
+    <string name="search_hint">Пошук аніме</string>
+    <string name="nav_home">Головна</string>
+    <string name="nav_anime">Аніме</string>
+    <string name="nav_collections">Колекції</string>
+    <string name="nav_random">Випадкове</string>
+    <string name="nav_news">Новини</string>
+    <string name="no_internet">Немає з’єднання з інтернетом</string>
+    <string name="retry">Спробувати ще раз</string>
+</resources>
