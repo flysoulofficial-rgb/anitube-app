@@ -1,0 +1,37 @@
+name: Probe site markup
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated paths to fetch (relative to site root)"
+        required: true
+        default: "/ /anime/ /anime/page/2/ /anime/action/ /xfsearch/year/2024/ /6130-pevniy-tayemnichiy-zagn-item.html /3972-slozi-tari.html"
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pages (few, polite)
+        run: |
+          mkdir -p out
+          UA="Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+          for p in ${{ github.event.inputs.urls }}; do
+            name=$(echo "$p" | sed 's#[^A-Za-z0-9]#_#g' | cut -c1-80)
+            curl -sSL -m 40 -A "$UA" -H "Accept-Language: uk" -D "out/$name.headers" -o "out/$name.html" "https://anitube.in.ua$p" || echo "fail $p"
+            sleep 2
+          done
+          ls -la out
+      - name: Publish to branch probe-data
+        run: |
+          git config user.name probe
+          git config user.email probe@example.com
+          git checkout --orphan probe-data
+          git rm -rf . >/dev/null 2>&1 || true
+          cp -r out probe-data-out 2>/dev/null || true
+          mkdir -p data && cp out/* data/
+          rm -rf probe-data-out out
+          git add data
+          git commit -qm "probe data"
+          git push -f origin probe-data
