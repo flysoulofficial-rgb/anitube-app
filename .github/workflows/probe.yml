@@ -1,11 +1,7 @@
 name: Probe site markup
 on:
-  workflow_dispatch:
-    inputs:
-      urls:
-        description: "Space-separated paths to fetch (relative to site root)"
-        required: true
-        default: "/ /anime/ /anime/page/2/ /anime/action/ /xfsearch/year/2024/ /6130-pevniy-tayemnichiy-zagn-item.html /3972-slozi-tari.html"
+  push:
+    branches: [probe]
 permissions:
   contents: write
 jobs:
@@ -17,7 +13,7 @@ jobs:
         run: |
           mkdir -p out
           UA="Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
-          for p in ${{ github.event.inputs.urls }}; do
+          for p in $(cat probe-urls.txt); do
             name=$(echo "$p" | sed 's#[^A-Za-z0-9]#_#g' | cut -c1-80)
             curl -sSL -m 40 -A "$UA" -H "Accept-Language: uk" -D "out/$name.headers" -o "out/$name.html" "https://anitube.in.ua$p" || echo "fail $p"
             sleep 2
