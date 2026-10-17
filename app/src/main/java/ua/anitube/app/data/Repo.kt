@@ -107,6 +107,13 @@ object Repo {
         return Parser.parseListing(Site.html("${Site.BASE}/index.php?do=search", form))
     }
 
-    suspend fun detail(url: String): Detail =
-        Parser.parseDetail(Site.html(url), url) ?: throw ua.anitube.app.net.SiteException("Не вдалося розібрати сторінку аніме.")
+    suspend fun detail(url: String): Detail {
+        val plain = Parser.parseDetail(Site.html(url), url)
+        if (plain != null && plain.dubs.isNotEmpty()) return plain
+        // Плейлист на сторінці додає скрипт сайту — беремо повністю відрендерену сторінку.
+        val rendered = ua.anitube.app.net.RenderedPage.withPlaylist(url)
+            ?.let { Parser.parseDetail(it, url) }
+        return rendered ?: plain
+            ?: throw ua.anitube.app.net.SiteException("Не вдалося розібрати сторінку аніме.")
+    }
 }
