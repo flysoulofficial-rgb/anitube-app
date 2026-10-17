@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -193,7 +194,7 @@ fun LibraryScreen(vm: AppVM) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(favs, key = { it.id }) { c -> PosterCard(c, onClick = { vm.open(c) }) }
+                    gridItems(favs, key = { it.id }) { c -> PosterCard(c, onClick = { vm.open(c) }) }
                 }
             }
         } else {
