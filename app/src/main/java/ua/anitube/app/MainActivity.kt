@@ -1,179 +1,163 @@
 package ua.anitube.app
 
-import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.ActivityInfo
-import android.graphics.Bitmap
-import android.net.Uri
+import android.content.res.Configuration
 import android.os.Bundle
-import android.view.View
-import android.webkit.*
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.ProgressBar
-import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SearchView
+import android.util.Rational
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import ua.anitube.app.data.Card
+import ua.anitube.app.data.Parser
+import ua.anitube.app.data.Store
+import ua.anitube.app.player.PlayerVM
+import ua.anitube.app.ui.*
 
-class MainActivity : AppCompatActivity() {
-    private val base = "https://anitube.in.ua"
-    private val hosts = listOf("anitube.in.ua", "manga.in.ua")
-
-    private lateinit var web: WebView
-    private lateinit var swipe: SwipeRefreshLayout
-    private lateinit var progress: ProgressBar
-    private lateinit var errorView: View
-    private lateinit var content: View
-    private lateinit var fullscreen: FrameLayout
-    private lateinit var nav: BottomNavigationView
-    private var customView: View? = null
-    private var customCb: WebChromeClient.CustomViewCallback? = null
-    private var failed = false
-    private var syncing = false
-
-    private val tabs by lazy {
-        mapOf(
-            R.id.nav_home to "$base/",
-            R.id.nav_anime to "$base/anime/",
-            R.id.nav_collections to "$base/collections/",
-            R.id.nav_random to "$base/?do=random_anime",
-            R.id.nav_news to "$base/news/"
-        )
-    }
+class MainActivity : ComponentActivity() {
+    private val pvm: PlayerVM by viewModels()
+    private val pip = mutableStateOf(false)
+    private val deepLink = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        web = findViewById(R.id.web); swipe = findViewById(R.id.swipe)
-        progress = findViewById(R.id.progress); errorView = findViewById(R.id.error)
-        content = findViewById(R.id.content); fullscreen = findViewById(R.id.fullscreen)
-        nav = findViewById(R.id.bottom_nav)
-
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        val item = toolbar.menu.findItem(R.id.action_search)
-        val sv = item.actionView as SearchView
-        sv.queryHint = getString(R.string.search_hint)
-        sv.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(q: String): Boolean {
-                web.loadUrl("$base/index.php?do=search&subaction=search&story=" + Uri.encode(q))
-                sv.clearFocus(); item.collapseActionView(); return true
+        enableEdgeToEdge()
+        deepLink.value = intent?.data?.toString()
+        setContent {
+            AniTheme {
+                Root(pvm, pip.value, deepLink.value) { deepLink.value = null }
+                ChallengeOverlay()
             }
-            override fun onQueryTextChange(newText: String) = false
-        })
-
-        nav.setOnItemSelectedListener { m ->
-            if (!syncing) tabs[m.itemId]?.let { web.loadUrl(it) }
-            true
         }
-
-        swipe.setColorSchemeResources(R.color.brand)
-        swipe.setOnChildScrollUpCallback { _, _ -> web.scrollY > 0 }
-        swipe.setOnRefreshListener { web.reload() }
-        findViewById<Button>(R.id.retry).setOnClickListener {
-            failed = false; errorView.visibility = View.GONE; web.reload()
-        }
-
-        setupWebView()
-        web.loadUrl(startUrl(intent))
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                when {
-                    customView != null -> web.webChromeClient?.onHideCustomView()
-                    web.canGoBack() -> web.goBack()
-                    else -> finish()
-                }
-            }
-        })
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        web.loadUrl(startUrl(intent))
+        deepLink.value = intent.data?.toString()
     }
 
-    private fun isOurs(u: Uri) = hosts.any { u.host == it || u.host?.endsWith(".$it") == true }
-
-    private fun startUrl(i: Intent?): String {
-        val d = i?.data
-        return if (d != null && isOurs(d)) d.toString() else base
+    override fun onUserLeaveHint() {
+        if (pvm.active && pvm.playing && Store.settings.value.pip) {
+            try {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
+                )
+            } catch (_: Exception) {}
+        }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebView() {
-        CookieManager.getInstance().apply { setAcceptCookie(true); setAcceptThirdPartyCookies(web, true) }
-        web.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            // "AniTubeApp" lets the site detect the app; "; wv" removed so video players don't block us
-            userAgentString = userAgentString.replace("; wv", "") + " AniTubeApp/1.0"
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pip.value = isInPictureInPictureMode
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // у PiP відтворення триває; інакше ставимо на паузу і зберігаємо місце
+        if (!isInPictureInPictureMode && pvm.active) {
+            pvm.player.pause()
+            pvm.saveNow()
         }
-        web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-                if (!r.isForMainFrame) return false
-                val u = r.url
-                if ((u.scheme == "http" || u.scheme == "https") && isOurs(u)) return false
-                try { startActivity(Intent(Intent.ACTION_VIEW, u)) } catch (_: Exception) {}
-                return true
-            }
-            override fun onPageStarted(v: WebView, url: String, f: Bitmap?) {
-                failed = false; progress.visibility = View.VISIBLE
-            }
-            override fun onPageFinished(v: WebView, url: String) {
-                swipe.isRefreshing = false; progress.visibility = View.GONE
-                errorView.visibility = if (failed) View.VISIBLE else View.GONE
-                syncTab(url)
-            }
-            override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                if (r.isForMainFrame) { failed = true; errorView.visibility = View.VISIBLE }
-            }
+    }
+}
+
+@Composable
+fun Root(pvm: PlayerVM, inPip: Boolean, deepLink: String?, consumeLink: () -> Unit) {
+    val vm: AppVM = androidx.lifecycle.viewmodel.compose.viewModel()
+    val act = androidx.compose.ui.platform.LocalContext.current as ComponentActivity
+    val settings by Store.settings.collectAsState()
+
+    LaunchedEffect(deepLink) {
+        if (deepLink != null) {
+            val id = Parser.idFromUrl(deepLink)
+            if (id != 0) vm.open(Card(id, deepLink, "", ""))
+            consumeLink()
         }
-        web.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(v: WebView, p: Int) { progress.progress = p }
-            override fun onShowCustomView(view: View, cb: CustomViewCallback) {
-                if (customView != null) { cb.onCustomViewHidden(); return }
-                customView = view; customCb = cb
-                fullscreen.addView(view); fullscreen.visibility = View.VISIBLE
-                content.visibility = View.GONE
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                bars().apply {
-                    hide(WindowInsetsCompat.Type.systemBars())
-                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    // Повний екран і горизонтальна орієнтація під час перегляду
+    LaunchedEffect(pvm.active) {
+        val ctrl = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        if (pvm.active) {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            ctrl.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ctrl.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(pvm.active, settings.keepScreenOn) {
+        if (pvm.active && settings.keepScreenOn) act.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { act.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    BackHandler(enabled = pvm.active) { pvm.close() }
+    BackHandler(enabled = !pvm.active && (vm.stack.isNotEmpty() || vm.tab != 0)) { vm.back() }
+
+    Box(Modifier.fillMaxSize().background(ua.anitube.app.ui.C.Bg)) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when (val top = vm.stack.lastOrNull()) {
+                    is Route.Title -> key(top.card.url) { DetailScreen(top.card, vm, pvm) { vm.back() } }
+                    is Route.Search -> SearchScreen(vm) { vm.back() }
+                    null -> when (vm.tab) {
+                        0 -> HomeScreen(vm)
+                        1 -> CatalogScreen(vm)
+                        2 -> LibraryScreen(vm)
+                        else -> SettingsScreen()
+                    }
                 }
             }
-            override fun onHideCustomView() {
-                val v = customView ?: return
-                fullscreen.removeView(v); fullscreen.visibility = View.GONE
-                content.visibility = View.VISIBLE
-                customCb?.onCustomViewHidden(); customView = null; customCb = null
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                bars().show(WindowInsetsCompat.Type.systemBars())
+            if (vm.stack.isEmpty() && !pvm.active) BottomBar(vm.tab) { vm.tab = it }
+        }
+        if (pvm.active) PlayerScreen(pvm, inPip) { pvm.close() }
+    }
+}
+
+@Composable
+private fun BottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(ua.anitube.app.ui.C.Surface).navigationBarsPadding().height(60.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val items = listOf("Головна", "Каталог", "Бібліотека", "Налаштування")
+        items.forEachIndexed { i, label ->
+            val tint = if (i == selected) ua.anitube.app.ui.C.Accent else ua.anitube.app.ui.C.Text2
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clickable { onSelect(i) },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+            ) {
+                when (i) {
+                    0 -> Icon(Icons.Default.Home, label, tint = tint, modifier = Modifier.size(24.dp))
+                    1 -> GridGlyph(24.dp, tint)
+                    2 -> Icon(Icons.Default.Favorite, label, tint = tint, modifier = Modifier.size(24.dp))
+                    else -> Icon(Icons.Default.Settings, label, tint = tint, modifier = Modifier.size(24.dp))
+                }
+                Text(label, color = tint, fontSize = 11.sp)
             }
         }
     }
-
-    private fun bars() = WindowCompat.getInsetsController(window, window.decorView)
-
-    private fun syncTab(url: String) {
-        val path = Uri.parse(url).path ?: "/"
-        val id = when {
-            path == "/" || path.isEmpty() -> R.id.nav_home
-            path.startsWith("/anime") -> R.id.nav_anime
-            path.startsWith("/collections") -> R.id.nav_collections
-            path.startsWith("/news") -> R.id.nav_news
-            else -> null
-        } ?: return
-        syncing = true; nav.selectedItemId = id; syncing = false
-    }
-
-    override fun onPause() { super.onPause(); web.onPause(); CookieManager.getInstance().flush() }
-    override fun onResume() { super.onResume(); web.onResume() }
 }
