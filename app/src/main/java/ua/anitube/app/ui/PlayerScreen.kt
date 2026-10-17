@@ -124,9 +124,9 @@ fun PlayerScreen(vm: PlayerVM, inPip: Boolean, onClose: () -> Unit) {
         }
 
         // Кнопки «Пропустити опенінг» / «Наступна серія»
-        if (!inPip) {
+        if (!inPip && controls) {
             Column(
-                Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = if (controls) 110.dp else 40.dp),
+                Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 110.dp),
                 horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (vm.introWindowActive() && vm.error == null && !vm.loading) {
@@ -240,8 +240,8 @@ fun PlayerScreen(vm: PlayerVM, inPip: Boolean, onClose: () -> Unit) {
 private fun PillButton(text: String, onClick: () -> Unit) {
     Text(
         text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp,
-        modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(C.Accent).clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+        modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(C.Accent.copy(alpha = 0.4f)).clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp)
     )
 }
 
