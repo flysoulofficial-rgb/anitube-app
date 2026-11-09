@@ -11,6 +11,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -43,6 +48,14 @@ fun fmtTime(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
+fun fitMode(i: Int) = when (i) {
+    1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+}
+fun fitName(i: Int) = when (i) { 1 -> "на весь екран"; 2 -> "розтягнути"; else -> "за розміром" }
+fun orientName(i: Int) = when (i) { 1 -> "авто"; 2 -> "портрет"; else -> "альбом" }
+
 @Composable
 fun PlayerScreen(vm: PlayerVM, inPip: Boolean, onClose: () -> Unit) {
     var controls by remember { mutableStateOf(true) }
@@ -71,19 +84,37 @@ fun PlayerScreen(vm: PlayerVM, inPip: Boolean, onClose: () -> Unit) {
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = fitMode(settings.fit)
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     player = vm.player
                 }
             },
-            update = { it.player = vm.player },
+            update = { it.player = vm.player; it.resizeMode = fitMode(settings.fit) },
             modifier = Modifier.fillMaxSize()
         )
 
         // жести: тап — показати/сховати, подвійний тап — перемотка
-        val width = LocalConfiguration.current.screenWidthDp
         Box(
             Modifier.fillMaxSize().pointerInput(Unit) {
+                // щипок двома пальцями: розвести — більше, звести — менше
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var acc = 1f
+                    var done = false
+                    do {
+                        val ev = awaitPointerEvent()
+                        if (!done && ev.changes.size >= 2) {
+                            acc *= ev.calculateZoom()
+                            val cur = Store.settings.value.fit
+                            if (acc > 1.15f && cur < 2) {
+                                Store.update { it.copy(fit = cur + 1) }; toast = fitName(cur + 1); done = true
+                            } else if (acc < 0.87f && cur > 0) {
+                                Store.update { it.copy(fit = cur - 1) }; toast = fitName(cur - 1); done = true
+                            }
+                        }
+                    } while (ev.changes.any { it.pressed })
+                }
+            }.pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { controls = !controls; touch++ },
                     onDoubleTap = { o ->
@@ -188,13 +219,14 @@ fun PlayerScreen(vm: PlayerVM, inPip: Boolean, onClose: () -> Unit) {
                         )
                         Text(fmtTime(vm.duration), color = Color.White, fontSize = 12.sp)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Chip("Екран: ${fitName(settings.fit)}") { Store.update { it.copy(fit = (it.fit + 1) % 3) }; touch++ }
+                        Chip("Поворот: ${orientName(settings.orient)}") { Store.update { it.copy(orient = (it.orient + 1) % 3) }; touch++ }
                         Chip("Озвучка") { panel = "dub" }
                         Chip("Серії") { panel = "episodes" }
                         Chip("×${fmtSpeed(vm.speed)}") { panel = "speed" }
                         Chip("Якість і звук") { panel = "quality" }
                         Chip("Веб-плеєр") { web = true }
-                        Spacer(Modifier.weight(1f))
                         Text(
                             if (settings.autoNext) "Автоперехід: так" else "Автоперехід: ні",
                             color = if (settings.autoNext) C.Accent else Color(0xFFCCCCCC), fontSize = 12.sp,

@@ -26,7 +26,11 @@ data class AppSettings(
     val pip: Boolean = true,
     val resume: Boolean = true,
     val keepScreenOn: Boolean = true,
-    val preferSubs: Boolean = false
+    val preferSubs: Boolean = false,
+    /** 0 = за розміром, 1 = на весь екран (обрізати краї), 2 = розтягнути */
+    val fit: Int = 0,
+    /** 0 = альбомна, 1 = авто (за датчиком), 2 = портретна */
+    val orient: Int = 0
 )
 
 /** Intro/outro marks per title, in ms (-1 = not set). */
@@ -54,7 +58,9 @@ object Store {
             pip = sp.getBoolean("pip", true),
             resume = sp.getBoolean("resume", true),
             keepScreenOn = sp.getBoolean("keepScreenOn", true),
-            preferSubs = sp.getBoolean("preferSubs", false)
+            preferSubs = sp.getBoolean("preferSubs", false),
+            fit = sp.getInt("fit", 0),
+            orient = sp.getInt("orient", 0)
         )
     }
 
@@ -160,7 +166,7 @@ object Store {
         sp.edit().putBoolean("autoNext", s.autoNext).putBoolean("autoSkipIntro", s.autoSkipIntro)
             .putInt("skipSeconds", s.skipSeconds).putFloat("speed", s.speed).putBoolean("pip", s.pip)
             .putBoolean("resume", s.resume).putBoolean("keepScreenOn", s.keepScreenOn)
-            .putBoolean("preferSubs", s.preferSubs).apply()
+            .putBoolean("preferSubs", s.preferSubs).putInt("fit", s.fit).putInt("orient", s.orient).apply()
     }
 
     // ---------- Вибір озвучки для тайтла ----------

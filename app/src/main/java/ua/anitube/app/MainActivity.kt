@@ -98,10 +98,14 @@ fun Root(pvm: PlayerVM, inPip: Boolean, deepLink: String?, consumeLink: () -> Un
     }
 
     // Повний екран і горизонтальна орієнтація під час перегляду
-    LaunchedEffect(pvm.active) {
+    LaunchedEffect(pvm.active, settings.orient) {
         val ctrl = WindowCompat.getInsetsController(act.window, act.window.decorView)
         if (pvm.active) {
-            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            act.requestedOrientation = when (settings.orient) {
+                1 -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                2 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            }
             ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             ctrl.hide(WindowInsetsCompat.Type.systemBars())
         } else {
